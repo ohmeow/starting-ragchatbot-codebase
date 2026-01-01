@@ -7,7 +7,7 @@
   padding: 0;
 }
 
-/* CSS Variables - ChatGPT-inspired dark theme */
+/* CSS Variables - Dark theme (default) */
 :root {
   --primary-color: #10a37f;
   --primary-hover: #0d8a6c;
@@ -25,6 +25,57 @@
   --welcome-bg: #1a1a1a;
   --welcome-border: #303030;
   --input-bg: #303030;
+  --code-bg: rgba(0, 0, 0, 0.2);
+  --scrollbar-thumb: #404040;
+  --scrollbar-thumb-hover: #505050;
+  --source-chip-bg: rgba(51, 65, 85, 0.6);
+  --source-link-bg: rgba(59, 130, 246, 0.15);
+  --source-link-border: rgba(96, 165, 250, 0.4);
+  --source-link-color: #93c5fd;
+  --source-link-hover-bg: rgba(59, 130, 246, 0.3);
+  --source-link-hover-border: #60a5fa;
+  --source-link-hover-color: #bfdbfe;
+}
+
+/* Light theme */
+[data-theme='light'] {
+  --primary-color: #059669;
+  --primary-hover: #047857;
+  --background: #f9fafb;
+  --surface: #ffffff;
+  --surface-hover: #f3f4f6;
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --border-color: #e5e7eb;
+  --user-message: #e5e7eb;
+  --assistant-message: transparent;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --focus-ring: rgba(5, 150, 105, 0.3);
+  --welcome-bg: #f3f4f6;
+  --welcome-border: #e5e7eb;
+  --input-bg: #ffffff;
+  --code-bg: rgba(0, 0, 0, 0.05);
+  --scrollbar-thumb: #d1d5db;
+  --scrollbar-thumb-hover: #9ca3af;
+  --source-chip-bg: rgba(241, 245, 249, 0.8);
+  --source-link-bg: rgba(59, 130, 246, 0.1);
+  --source-link-border: rgba(59, 130, 246, 0.3);
+  --source-link-color: #2563eb;
+  --source-link-hover-bg: rgba(59, 130, 246, 0.2);
+  --source-link-hover-border: #3b82f6;
+  --source-link-hover-color: #1d4ed8;
+}
+
+/* Theme transition */
+body,
+body *,
+body *::before,
+body *::after {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 /* Base Styles */
@@ -302,7 +353,7 @@ header h1 {
   display: flex;
   align-items: center;
   padding: 0.5rem 0.875rem;
-  background: rgba(51, 65, 85, 0.6);
+  background: var(--source-chip-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   font-size: 0.8rem;
@@ -314,15 +365,15 @@ header h1 {
 
 .source-chip-link {
   cursor: pointer;
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(96, 165, 250, 0.4);
-  color: #93c5fd;
+  background: var(--source-link-bg);
+  border-color: var(--source-link-border);
+  color: var(--source-link-color);
 }
 
 .source-chip-link:hover {
-  background: rgba(59, 130, 246, 0.3);
-  border-color: #60a5fa;
-  color: #bfdbfe;
+  background: var(--source-link-hover-bg);
+  border-color: var(--source-link-hover-border);
+  color: var(--source-link-hover-color);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 }
@@ -388,7 +439,7 @@ header h1 {
 }
 
 .message-content code {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--code-bg);
   padding: 0.125rem 0.25rem;
   border-radius: 3px;
   font-family: 'Fira Code', 'Consolas', monospace;
@@ -396,7 +447,7 @@ header h1 {
 }
 
 .message-content pre {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--code-bg);
   padding: 0.75rem;
   border-radius: 4px;
   overflow-x: auto;
@@ -839,4 +890,82 @@ details[open] .suggested-header::before {
   .sidebar {
     width: 220px;
   }
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--surface);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    z-index: 1000;
+    box-shadow: var(--shadow);
+}
+
+.theme-toggle:hover {
+    background: var(--surface-hover);
+    border-color: var(--text-secondary);
+    transform: scale(1.05);
+}
+
+.theme-toggle:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.theme-toggle:active {
+    transform: scale(0.95);
+}
+
+.theme-toggle svg {
+    width: 22px;
+    height: 22px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* Sun icon (shown in dark mode) */
+.theme-toggle .sun-icon {
+    display: block;
+}
+
+.theme-toggle .moon-icon {
+    display: none;
+}
+
+/* Moon icon (shown in light mode) */
+[data-theme="light"] .theme-toggle .sun-icon {
+    display: none;
+}
+
+[data-theme="light"] .theme-toggle .moon-icon {
+    display: block;
+}
+
+/* Animation for icon switch */
+.theme-toggle:hover svg {
+    transform: rotate(15deg);
+}
+
+@media (max-width: 768px) {
+    .theme-toggle {
+        top: 0.75rem;
+        right: 0.75rem;
+        width: 40px;
+        height: 40px;
+    }
+
+    .theme-toggle svg {
+        width: 20px;
+        height: 20px;
+    }
 }
