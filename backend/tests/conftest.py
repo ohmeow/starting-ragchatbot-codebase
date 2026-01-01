@@ -2,7 +2,7 @@
 Shared pytest fixtures for RAG chatbot tests.
 """
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock, patch
 import sys
 import os
 
@@ -11,6 +11,131 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from vector_store import SearchResults
 from models import Course, Lesson, CourseChunk
+
+
+# ============================================================================
+# API Testing Fixtures
+# ============================================================================
+
+@pytest.fixture
+def mock_rag_system():
+    """Fixture: Mocked RAGSystem for API tests"""
+    rag = Mock()
+    rag.query = Mock(return_value=("This is the answer.", [
+        {"title": "ML Course - Lesson 1", "link": "https://example.com/lesson1"}
+    ]))
+    rag.get_course_analytics = Mock(return_value={
+        "total_courses": 3,
+        "course_titles": ["Course A", "Course B", "Course C"]
+    })
+    rag.session_manager = Mock()
+    rag.session_manager.create_session = Mock(return_value="test-session-123")
+    return rag
+
+
+@pytest.fixture
+def test_app(mock_rag_system):
+    """
+    Fixture: Create a test FastAPI app without static file mounting.
+
+    This creates an isolated test app that mirrors the production endpoints
+    but avoids static file dependencies that don't exist in test environment.
+    """
+    from fastapi import FastAPI, HTTPException
+    from pydantic import BaseModel
+    from typing import List, Optional
+
+    # Create test app
+    app = FastAPI(title="Test Course Materials RAG System")
+
+    # Define request/response models (mirror production)
+    class QueryRequest(BaseModel):
+        query: str
+        session_id: Optional[str] = None
+
+    class Source(BaseModel):
+        title: str
+        link: Optional[str] = None
+
+    class QueryResponse(BaseModel):
+        answer: str
+        sources: List[Source]
+        session_id: str
+
+    class CourseStats(BaseModel):
+        total_courses: int
+        course_titles: List[str]
+
+    # Define endpoints (mirror production)
+    @app.post("/api/query", response_model=QueryResponse)
+    async def query_documents(request: QueryRequest):
+        try:
+            session_id = request.session_id
+            if not session_id:
+                session_id = mock_rag_system.session_manager.create_session()
+
+            answer, sources = mock_rag_system.query(request.query, session_id)
+
+            return QueryResponse(
+                answer=answer,
+                sources=sources,
+                session_id=session_id
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/courses", response_model=CourseStats)
+    async def get_course_stats():
+        try:
+            analytics = mock_rag_system.get_course_analytics()
+            return CourseStats(
+                total_courses=analytics["total_courses"],
+                course_titles=analytics["course_titles"]
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/")
+    async def root():
+        return {"message": "Course Materials RAG System API"}
+
+    return app
+
+
+@pytest.fixture
+def test_client(test_app):
+    """Fixture: TestClient for making HTTP requests to test app"""
+    from fastapi.testclient import TestClient
+    return TestClient(test_app)
+
+
+@pytest.fixture
+async def async_test_client(test_app):
+    """Fixture: Async client for async endpoint testing"""
+    from httpx import AsyncClient, ASGITransport
+    async with AsyncClient(
+        transport=ASGITransport(app=test_app),
+        base_url="http://test"
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+def sample_query_request():
+    """Fixture: Sample query request data"""
+    return {
+        "query": "What is machine learning?",
+        "session_id": None
+    }
+
+
+@pytest.fixture
+def sample_query_request_with_session():
+    """Fixture: Sample query request with session ID"""
+    return {
+        "query": "Tell me more about neural networks",
+        "session_id": "existing-session-456"
+    }
 
 
 @pytest.fixture
