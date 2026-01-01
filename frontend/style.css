@@ -101,9 +101,18 @@ body {
   padding: 0;
 }
 
-/* Header - Hidden */
+/* Header - Sticky at Top */
 header {
-  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-color);
+  padding: 1rem 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
 }
 
 header h1 {
@@ -114,12 +123,14 @@ header h1 {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   margin: 0;
+  text-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
 }
 
 .subtitle {
   font-size: 0.95rem;
   color: var(--text-secondary);
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
+  font-weight: 400;
 }
 
 /* Main Content Area with Sidebar */
@@ -830,6 +841,19 @@ details[open] .suggested-header::before {
 
 /* Responsive Design */
 @media (max-width: 768px) {
+  header {
+    padding: 0.875rem 1rem;
+  }
+
+  header h1 {
+    font-size: 1.35rem;
+    padding-right: 3rem;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+  }
+
   .main-content {
     flex-direction: column;
   }
@@ -894,9 +918,10 @@ details[open] .suggested-header::before {
 
 /* Theme Toggle Button */
 .theme-toggle {
-    position: fixed;
-    top: 1rem;
-    right: 1rem;
+    position: absolute;
+    top: 50%;
+    right: 1.5rem;
+    transform: translateY(-50%);
     width: 44px;
     height: 44px;
     border-radius: 50%;
@@ -908,7 +933,7 @@ details[open] .suggested-header::before {
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
-    z-index: 1000;
+    z-index: 1001;
     box-shadow: var(--shadow);
 }
 
@@ -958,8 +983,7 @@ details[open] .suggested-header::before {
 
 @media (max-width: 768px) {
     .theme-toggle {
-        top: 0.75rem;
-        right: 0.75rem;
+        right: 1rem;
         width: 40px;
         height: 40px;
     }
