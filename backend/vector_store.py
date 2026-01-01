@@ -99,20 +99,37 @@ class VectorStore:
         except Exception as e:
             return SearchResults.empty(f"Search error: {str(e)}")
     
-    def _resolve_course_name(self, course_name: str) -> Optional[str]:
-        """Use vector search to find best matching course by name"""
+    def _resolve_course_name(self, course_name: str, max_distance: float = 1.6) -> Optional[str]:
+        """
+        Use vector search to find best matching course by name.
+
+        Args:
+            course_name: The course name to search for
+            max_distance: Maximum distance threshold for a valid match (default 1.5).
+                         Lower values = stricter matching. Typical good matches are < 1.0.
+
+        Returns:
+            The resolved course title or None if no good match found
+        """
         try:
             results = self.course_catalog.query(
                 query_texts=[course_name],
-                n_results=1
+                n_results=1,
+                include=['documents', 'metadatas', 'distances']
             )
-            
+
             if results['documents'][0] and results['metadatas'][0]:
-                # Return the title (which is now the ID)
-                return results['metadatas'][0][0]['title']
+                # Check if the match is good enough based on distance
+                distance = results['distances'][0][0] if results['distances'][0] else float('inf')
+                if distance <= max_distance:
+                    # Return the title (which is now the ID)
+                    return results['metadatas'][0][0]['title']
+                else:
+                    # Match is too weak - likely not the right course
+                    return None
         except Exception as e:
             print(f"Error resolving course name: {e}")
-        
+
         return None
     
     def _build_filter(self, course_title: Optional[str], lesson_number: Optional[int]) -> Optional[Dict]:

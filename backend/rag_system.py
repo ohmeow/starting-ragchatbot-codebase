@@ -1,11 +1,11 @@
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Union
 import os
 from document_processor import DocumentProcessor
 from vector_store import VectorStore
 from ai_generator import AIGenerator
 from session_manager import SessionManager
-from search_tools import ToolManager, CourseSearchTool
-from models import Course, Lesson, CourseChunk
+from search_tools import ToolManager, CourseSearchTool, CourseOutlineTool
+from models import Course
 
 class RAGSystem:
     """Main orchestrator for the Retrieval-Augmented Generation system"""
@@ -23,27 +23,29 @@ class RAGSystem:
         self.tool_manager = ToolManager()
         self.search_tool = CourseSearchTool(self.vector_store)
         self.tool_manager.register_tool(self.search_tool)
+        self.outline_tool = CourseOutlineTool(self.vector_store)
+        self.tool_manager.register_tool(self.outline_tool)
     
-    def add_course_document(self, file_path: str) -> Tuple[Course, int]:
+    def add_course_document(self, file_path: str) -> Tuple[Optional[Course], int]:
         """
         Add a single course document to the knowledge base.
-        
+
         Args:
             file_path: Path to the course document
-            
+
         Returns:
-            Tuple of (Course object, number of chunks created)
+            Tuple of (Course object or None if failed, number of chunks created)
         """
         try:
             # Process the document
             course, course_chunks = self.document_processor.process_course_document(file_path)
-            
+
             # Add course metadata to vector store for semantic search
             self.vector_store.add_course_metadata(course)
-            
+
             # Add course content chunks to vector store
             self.vector_store.add_course_content(course_chunks)
-            
+
             return course, len(course_chunks)
         except Exception as e:
             print(f"Error processing course document {file_path}: {e}")

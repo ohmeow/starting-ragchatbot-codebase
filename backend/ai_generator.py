@@ -1,17 +1,35 @@
 import anthropic
+from anthropic import APIError, AuthenticationError, RateLimitError
 from typing import List, Optional, Dict, Any
+
+class AIGeneratorError(Exception):
+    """Custom exception for AI Generator errors with user-friendly messages"""
+    pass
+
 
 class AIGenerator:
     """Handles interactions with Anthropic's Claude API for generating responses"""
     
     # Static system prompt to avoid rebuilding on each call
-    SYSTEM_PROMPT = """ You are an AI assistant specialized in course materials and educational content with access to a comprehensive search tool for course information.
+    SYSTEM_PROMPT = """ You are an AI assistant specialized in course materials and educational content with access to comprehensive tools for course information.
+
+Tool Usage Strategy:
+- For simple questions: Use a single tool call
+- For complex, multi-step questions (e.g., "Find courses covering the same topic as lesson X of course Y"):
+  1. First use get_course_outline to understand the course structure
+  2. Then use search_course_content based on what you learned
+- **Maximum 2 tool rounds per query** - use them wisely
+- Synthesize all tool results into accurate, fact-based responses
+- If a tool returns an error, acknowledge the limitation gracefully
 
 Search Tool Usage:
-- Use the search tool **only** for questions about specific course content or detailed educational materials
-- **One search per query maximum**
-- Synthesize search results into accurate, fact-based responses
-- If search yields no results, state this clearly without offering alternatives
+- Use search_course_content for questions about specific course content or detailed educational materials
+- You may search multiple times if needed to gather comprehensive information
+
+Course Outline Tool Usage:
+- Use get_course_outline for questions about course structure, what lessons are in a course, or course overview
+- Returns: course title, course link, and complete lesson list with numbers and titles
+- Combine with search_course_content for comprehensive answers about specific lessons
 
 Response Protocol:
 - **General knowledge questions**: Answer using existing knowledge without searching
@@ -75,61 +93,163 @@ Provide only the direct answer to what was asked.
         if tools:
             api_params["tools"] = tools
             api_params["tool_choice"] = {"type": "auto"}
-        
-        # Get response from Claude
-        response = self.client.messages.create(**api_params)
-        
+
+        # Get response from Claude with error handling
+        try:
+            response = self.client.messages.create(**api_params)
+        except AuthenticationError as e:
+            raise AIGeneratorError(
+                "API authentication failed. Please check your ANTHROPIC_API_KEY."
+            ) from e
+        except RateLimitError as e:
+            raise AIGeneratorError(
+                "API rate limit exceeded. Please wait a moment and try again."
+            ) from e
+        except APIError as e:
+            raise AIGeneratorError(
+                f"API error occurred: {e.message}"
+            ) from e
+        except Exception as e:
+            raise AIGeneratorError(
+                f"Unexpected error calling Claude API: {str(e)}"
+            ) from e
+
         # Handle tool execution if needed
         if response.stop_reason == "tool_use" and tool_manager:
             return self._handle_tool_execution(response, api_params, tool_manager)
-        
-        # Return direct response
-        return response.content[0].text
+
+        # Handle empty response content
+        if not response.content:
+            raise AIGeneratorError(
+                "Received empty response from Claude API."
+            )
+
+        # Extract text from response
+        text_content = []
+        for block in response.content:
+            if hasattr(block, 'text'):
+                text_content.append(block.text)
+
+        if not text_content:
+            raise AIGeneratorError(
+                "Received response without text content from Claude API."
+            )
+
+        return "\n".join(text_content)
     
-    def _handle_tool_execution(self, initial_response, base_params: Dict[str, Any], tool_manager):
+    def _handle_tool_execution(self, initial_response, base_params: Dict[str, Any], tool_manager, max_iterations: int = 2):
         """
         Handle execution of tool calls and get follow-up response.
-        
+        Supports multiple rounds of tool calling up to max_iterations.
+
         Args:
             initial_response: The response containing tool use requests
             base_params: Base API parameters
             tool_manager: Manager to execute tools
-            
+            max_iterations: Maximum number of tool execution rounds
+
         Returns:
             Final response text after tool execution
         """
         # Start with existing messages
         messages = base_params["messages"].copy()
-        
-        # Add AI's tool use response
-        messages.append({"role": "assistant", "content": initial_response.content})
-        
-        # Execute all tool calls and collect results
-        tool_results = []
-        for content_block in initial_response.content:
-            if content_block.type == "tool_use":
-                tool_result = tool_manager.execute_tool(
-                    content_block.name, 
-                    **content_block.input
-                )
-                
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": content_block.id,
-                    "content": tool_result
-                })
-        
-        # Add tool results as single message
-        if tool_results:
-            messages.append({"role": "user", "content": tool_results})
-        
-        # Prepare final API call without tools
-        final_params = {
-            **self.base_params,
-            "messages": messages,
-            "system": base_params["system"]
-        }
-        
-        # Get final response
-        final_response = self.client.messages.create(**final_params)
-        return final_response.content[0].text
+        current_response = initial_response
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+
+            # Add AI's tool use response
+            messages.append({"role": "assistant", "content": current_response.content})
+
+            # Execute all tool calls and collect results
+            tool_results = []
+            for content_block in current_response.content:
+                if content_block.type == "tool_use":
+                    try:
+                        tool_result = tool_manager.execute_tool(
+                            content_block.name,
+                            **content_block.input
+                        )
+                        is_error = False
+                    except Exception as e:
+                        tool_result = f"Tool execution failed: {str(e)}"
+                        is_error = True
+
+                    result_entry = {
+                        "type": "tool_result",
+                        "tool_use_id": content_block.id,
+                        "content": tool_result,
+                    }
+                    # Only include is_error when True (Anthropic API convention)
+                    if is_error:
+                        result_entry["is_error"] = True
+                    tool_results.append(result_entry)
+
+            # Add tool results as single message
+            if tool_results:
+                messages.append({"role": "user", "content": tool_results})
+
+            # Prepare next API call
+            next_params = {
+                **self.base_params,
+                "messages": messages,
+                "system": base_params["system"]
+            }
+            # Include tools from original call
+            if "tools" in base_params:
+                next_params["tools"] = base_params["tools"]
+
+            # Get next response with error handling
+            try:
+                next_response = self.client.messages.create(**next_params)
+            except AuthenticationError as e:
+                raise AIGeneratorError(
+                    "API authentication failed. Please check your ANTHROPIC_API_KEY."
+                ) from e
+            except RateLimitError as e:
+                raise AIGeneratorError(
+                    "API rate limit exceeded. Please wait a moment and try again."
+                ) from e
+            except APIError as e:
+                raise AIGeneratorError(
+                    f"API error occurred: {e.message}"
+                ) from e
+            except Exception as e:
+                raise AIGeneratorError(
+                    f"Unexpected error calling Claude API: {str(e)}"
+                ) from e
+
+            # Check if we got a final text response
+            if next_response.stop_reason != "tool_use":
+                # No more tool calls - extract and return text
+                if not next_response.content:
+                    raise AIGeneratorError(
+                        "Received empty response from Claude API after tool execution."
+                    )
+
+                text_content = []
+                for block in next_response.content:
+                    if hasattr(block, 'text'):
+                        text_content.append(block.text)
+
+                if text_content:
+                    return "\n".join(text_content)
+                else:
+                    raise AIGeneratorError(
+                        "Received response without text content from Claude API."
+                    )
+
+            # Claude wants to call more tools - continue the loop
+            current_response = next_response
+
+        # Max iterations reached - try to extract any text we have
+        text_content = []
+        for block in current_response.content:
+            if hasattr(block, 'text'):
+                text_content.append(block.text)
+
+        if text_content:
+            return "\n".join(text_content)
+
+        return "I've searched the course materials but reached the maximum number of search attempts. Please try rephrasing your question."
